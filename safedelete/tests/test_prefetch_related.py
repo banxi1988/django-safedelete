@@ -1,7 +1,7 @@
 from django.db import models
 
+from safedelete.tests.asserts import assert_queryset_equal
 from ..models import SafeDeleteModel
-from .testcase import SafeDeleteTestCase
 
 
 class PrefetchBrother(SafeDeleteModel):
@@ -16,38 +16,45 @@ class PrefetchSister(SafeDeleteModel):
     )
 
 
-class PrefetchTestCase(SafeDeleteTestCase):
+import pytest
+pytestmark = pytest.mark.django_db
 
-    def setUp(self):
-        brother1 = PrefetchBrother.objects.create()
-        brother2 = PrefetchBrother.objects.create()
 
-        PrefetchSister.objects.create(sibling=brother1)
-        PrefetchSister.objects.create(sibling=brother1)
-        PrefetchSister.objects.create(sibling=brother1)
-        PrefetchSister.objects.create(sibling=brother1).delete()
-        PrefetchSister.objects.create(sibling=brother2)
-        PrefetchSister.objects.create(sibling=brother2)
-        PrefetchSister.objects.create(sibling=brother2).delete()
-        PrefetchSister.objects.create(sibling=brother2).delete()
 
-    def test_prefetch_related(self):
-        """prefetch_related() queryset should not be filtered by core_filter."""
-        brothers = PrefetchBrother.objects.all().prefetch_related(
-            'sisters'
+@pytest.fixture()
+def brothers():
+    print("make_bothers")
+    brother1 = PrefetchBrother.objects.create()
+    brother2 = PrefetchBrother.objects.create()
+
+    PrefetchSister.objects.create(sibling=brother1)
+    PrefetchSister.objects.create(sibling=brother1)
+    PrefetchSister.objects.create(sibling=brother1)
+    PrefetchSister.objects.create(sibling=brother1).delete()
+    PrefetchSister.objects.create(sibling=brother2)
+    PrefetchSister.objects.create(sibling=brother2)
+    PrefetchSister.objects.create(sibling=brother2).delete()
+    PrefetchSister.objects.create(sibling=brother2).delete()
+
+    return (brother1,brother2)
+
+def test_prefetch_related(brothers):
+    """prefetch_related() queryset should not be filtered by core_filter."""
+    brothers = PrefetchBrother.objects.all().prefetch_related(
+        'sisters'
+    )
+    for brother in brothers:
+        assert_queryset_equal(
+            brother.sisters.all().order_by('pk'),
+            [
+                repr(s) for s in PrefetchBrother.objects.get(
+                    pk=brother.pk
+                ).sisters.all().order_by('pk')
+            ]
         )
-        for brother in brothers:
-            self.assertQuerysetEqual(
-                brother.sisters.all().order_by('pk'),
-                [
-                    repr(s) for s in PrefetchBrother.objects.get(
-                        pk=brother.pk
-                    ).sisters.all().order_by('pk')
-                ]
-            )
 
-    def test_prefetch_related_is_evaluated_once(self):
-        with self.assertNumQueries(2):
-            brothers = PrefetchBrother.objects.all().prefetch_related('sisters')
-            for brother in brothers:
-                list(brother.sisters.all())
+def test_prefetch_related_is_evaluated_once(brothers,django_assert_num_queries):
+    with django_assert_num_queries(2):
+        brothers = PrefetchBrother.objects.all().prefetch_related('sisters')
+        for brother in brothers:
+            list(brother.sisters.all())

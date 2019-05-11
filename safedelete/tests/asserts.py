@@ -1,4 +1,6 @@
 # coding: utf-8
+from collections import Counter
+
 import pytest
 from typing import NamedTuple, Optional
 from safedelete.models import SafeDeleteModel
@@ -84,3 +86,17 @@ def assert_hard_delete(instance:SafeDeleteModel, force=False, **kwargs):
   )
   force_policy = HARD_DELETE if force else None
   assert_delete(instance,expected_results=expected_results,force_policy=force_policy, **kwargs)
+
+
+def assert_queryset_equal(qs, values, transform=repr, ordered=True, msg=None):
+  items = map(transform, qs)
+  if not ordered:
+    assert Counter(items) == Counter(values), msg
+    return
+  values = list(values)
+  # For example qs.iterator() could be passed as qs, but it does not
+  # have 'ordered' attribute.
+  if len(values) > 1 and hasattr(qs, 'ordered') and not qs.ordered:
+    raise ValueError("Trying to compare non-ordered queryset "
+                     "against more than one ordered values")
+  assert list(items) == values, msg
