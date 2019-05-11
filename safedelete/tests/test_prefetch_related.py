@@ -21,9 +21,8 @@ pytestmark = pytest.mark.django_db
 
 
 
-@pytest.fixture()
-def brothers():
-    print("make_bothers")
+def setup_function(func):
+    print("setup for %r" % func)
     brother1 = PrefetchBrother.objects.create()
     brother2 = PrefetchBrother.objects.create()
 
@@ -38,7 +37,7 @@ def brothers():
 
     return (brother1,brother2)
 
-def test_prefetch_related(brothers):
+def test_prefetch_related():
     """prefetch_related() queryset should not be filtered by core_filter."""
     brothers = PrefetchBrother.objects.all().prefetch_related(
         'sisters'
@@ -53,7 +52,7 @@ def test_prefetch_related(brothers):
             ]
         )
 
-def test_prefetch_related_is_evaluated_once(brothers,django_assert_num_queries):
+def test_prefetch_related_is_evaluated_once(django_assert_num_queries):
     with django_assert_num_queries(2):
         brothers = PrefetchBrother.objects.all().prefetch_related('sisters')
         for brother in brothers:
