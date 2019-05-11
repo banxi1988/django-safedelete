@@ -1,15 +1,11 @@
 from django.db import models
-from django.test import TestCase
 from safedelete import SOFT_DELETE_CASCADE, SOFT_DELETE
 from safedelete.models import SafeDeleteModel
 from safedelete.tests.models import Article, Author, Category
 
-
-try:
-    from unittest.mock import patch
-except ImportError:
-    from mock import patch  # for python 2 supporting
-
+from unittest.mock import patch
+import pytest
+pytestmark = pytest.mark.django_db
 
 class Press(SafeDeleteModel):
     name = models.CharField(max_length=200)
@@ -32,85 +28,91 @@ class ArticleView(CustomAbstractModel):
 
     article = models.ForeignKey(Article, on_delete=models.CASCADE)
 
+@pytest.fixture()
+def authors():
+    return (
+      Author.objects.create(),
+      Author.objects.create(),
+      Author.objects.create(),
+    )
 
-class SimpleTest(TestCase):
+@pytest.fixture()
+def categories():
+    return (
+    Category.objects.create(name='category 0'),
+    Category.objects.create(name='category 1'),
+    Category.objects.create(name='category 2'),
+    )
 
-    def setUp(self):
+@pytest.fixture()
+def articles(authors,categories):
+    return (
+    Article.objects.create(author=authors[1]),
+    Article.objects.create(author=authors[1], category=categories[1]),
+    Article.objects.create(author=authors[2], category=categories[2]),
+    )
 
-        self.authors = (
-            Author.objects.create(),
-            Author.objects.create(),
-            Author.objects.create(),
-        )
+@pytest.fixture()
+def press(articles):
+    return Press.objects.create(name='press 0', article=articles[2])
 
-        self.categories = (
-            Category.objects.create(name='category 0'),
-            Category.objects.create(name='category 1'),
-            Category.objects.create(name='category 2'),
-        )
 
-        self.articles = (
-            Article.objects.create(author=self.authors[1]),
-            Article.objects.create(author=self.authors[1], category=self.categories[1]),
-            Article.objects.create(author=self.authors[2], category=self.categories[2]),
-        )
+def test_soft_delete_cascade(authors,categories,articles,press):
+    assert Author.objects.count()== 3
+    assert Article.objects.count() == 3
+    assert Category.objects.count() == 3
+    assert Press.objects.count() == 1
 
-        self.press = (
-            Press.objects.create(name='press 0', article=self.articles[2])
-        )
+    authors[2].delete(force_policy=SOFT_DELETE_CASCADE)
 
-    def test_soft_delete_cascade(self):
-        self.assertEqual(Author.objects.count(), 3)
-        self.assertEqual(Article.objects.count(), 3)
-        self.assertEqual(Category.objects.count(), 3)
-        self.assertEqual(Press.objects.count(), 1)
+    assert Author.objects.count() == 2
+    assert Author.all_objects.count() == 3
+    assert Article.objects.count() == 2
+    assert Article.all_objects.count() == 3
+    assert Press.objects.count() == 0
+    assert Press.all_objects.count() == 1
 
-        self.authors[2].delete(force_policy=SOFT_DELETE_CASCADE)
 
-        self.assertEqual(Author.objects.count(), 2)
-        self.assertEqual(Author.all_objects.count(), 3)
-        self.assertEqual(Article.objects.count(), 2)
-        self.assertEqual(Article.all_objects.count(), 3)
-        self.assertEqual(Press.objects.count(), 0)
-        self.assertEqual(Press.all_objects.count(), 1)
+def test_soft_delete_cascade_with_normal_model(authors,categories,articles,press):
+    PressNormalModel.objects.create(name='press 0', article=articles[2])
+    authors[2].delete(force_policy=SOFT_DELETE_CASCADE)
 
-    def test_soft_delete_cascade_with_normal_model(self):
-        PressNormalModel.objects.create(name='press 0', article=self.articles[2])
-        self.authors[2].delete(force_policy=SOFT_DELETE_CASCADE)
+    assert PressNormalModel.objects.count() == 1
 
-        self.assertEqual(Author.objects.count(), 2)
-        self.assertEqual(Author.all_objects.count(), 3)
-        self.assertEqual(Article.objects.count(), 2)
-        self.assertEqual(Article.all_objects.count(), 3)
-        self.assertEqual(Press.objects.count(), 0)
-        self.assertEqual(Press.all_objects.count(), 1)
+    assert  Author.objects.count() == 2
+    assert Author.all_objects.count() ==  3
+    assert Article.objects.count() ==  2
+    assert Article.all_objects.count() ==  3
+    assert Press.objects.count() ==  0
+    assert Press.all_objects.count() ==  1
 
-    def test_soft_delete_cascade_with_abstract_model(self):
-        ArticleView.objects.create(article=self.articles[2])
 
-        self.articles[2].delete(force_policy=SOFT_DELETE_CASCADE)
+def test_soft_delete_cascade_with_abstract_model(authors,categories,articles,press):
+    ArticleView.objects.create(article=articles[2])
 
-        self.assertEqual(Article.objects.count(), 2)
-        self.assertEqual(Article.all_objects.count(), 3)
+    articles[2].delete(force_policy=SOFT_DELETE_CASCADE)
 
-        self.assertEqual(ArticleView.objects.count(), 0)
-        self.assertEqual(ArticleView.all_objects.count(), 1)
+    assert Article.objects.count() ==  2
+    assert Article.all_objects.count() ==  3
 
-    def test_soft_delete_cascade_deleted(self):
-        self.articles[0].delete(force_policy=SOFT_DELETE)
-        self.assertEqual(self.authors[1].article_set.count(), 1)
+    assert ArticleView.objects.count() ==  0
+    assert ArticleView.all_objects.count() ==  1
 
-        with patch('safedelete.tests.models.Article.delete') as delete_article_mock:
-            self.authors[1].delete(force_policy=SOFT_DELETE_CASCADE)
+def test_soft_delete_cascade_deleted(authors,categories,articles,press):
+    articles[0].delete(force_policy=SOFT_DELETE)
+    assert authors[1].article_set.count() ==  1
 
-            # delete_article_mock.assert_called_once doesn't work on py35
-            self.assertEqual(delete_article_mock.call_count, 1)
+    with patch('safedelete.tests.models.Article.delete') as delete_article_mock:
+        authors[1].delete(force_policy=SOFT_DELETE_CASCADE)
+        # delete_article_mock.assert_called_once doesn't work on py35
+        assert delete_article_mock.call_count ==  1
 
-    def test_undelete_with_soft_delete_cascade_policy(self):
-        self.authors[2].delete(force_policy=SOFT_DELETE_CASCADE)
-        self.authors[2].undelete(force_policy=SOFT_DELETE_CASCADE)
 
-        self.assertEqual(Author.objects.count(), 3)
-        self.assertEqual(Article.objects.count(), 3)
-        self.assertEqual(Category.objects.count(), 3)
-        self.assertEqual(Press.objects.count(), 1)
+def test_undelete_with_soft_delete_cascade_policy(authors,categories,articles,press):
+    authors[2].delete(force_policy=SOFT_DELETE_CASCADE)
+    authors[2].undelete(force_policy=SOFT_DELETE_CASCADE)
+
+    assert Author.objects.count() ==  3
+    assert Article.objects.count() ==  3
+    assert Category.objects.count() ==  3
+    assert Press.objects.count() ==  1
