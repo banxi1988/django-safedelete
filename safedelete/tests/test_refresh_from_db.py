@@ -1,7 +1,6 @@
 from ..config import DELETED_VISIBLE_BY_FIELD
 from ..managers import SafeDeleteManager
 from ..models import SafeDeleteMixin
-from .testcase import SafeDeleteTestCase
 
 
 class FieldManager(SafeDeleteManager):
@@ -12,14 +11,17 @@ class RefreshModel(SafeDeleteMixin):
     objects = FieldManager()
 
 
-class RefreshTestCase(SafeDeleteTestCase):
+import pytest
+pytestmark = pytest.mark.django_db
 
-    def setUp(self):
-        self.instance = RefreshModel.objects.create()
+@pytest.fixture()
+def instance():
+    return RefreshModel.objects.create()
 
-    def test_visible_by_field(self):
-        """Refresh should work with DELETED_VISIBLE_BY_FIELD."""
-        self.instance.refresh_from_db()
 
-        self.instance.delete()
-        self.instance.refresh_from_db()
+def test_visible_by_field(instance):
+    """Refresh should work with DELETED_VISIBLE_BY_FIELD."""
+    instance.refresh_from_db()
+
+    instance.delete()
+    instance.refresh_from_db()
