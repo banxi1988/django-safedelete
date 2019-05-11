@@ -1,8 +1,10 @@
 from django.db import models
 
+from safedelete.tests.asserts import assert_soft_delete
 from ..models import SafeDeleteModel
-from .testcase import SafeDeleteTestCase
 
+import pytest
+pytestmark = pytest.mark.django_db
 
 class InvisibleModel(SafeDeleteModel):
     # SafeDeleteModel subclasses automatically have their visibility set to invisible.
@@ -11,40 +13,28 @@ class InvisibleModel(SafeDeleteModel):
         max_length=100
     )
 
+@pytest.fixture()
+def instance():
+    return InvisibleModel.objects.create(
+        name='instance'
+    )
 
-class VisibilityTestCase(SafeDeleteTestCase):
 
-    def setUp(self):
-        self.instance = InvisibleModel.objects.create(
-            name='instance'
-        )
+def test_visible_by_pk(instance):
+    obj = instance
+    assert_soft_delete(obj, save=False)
+    assert InvisibleModel.objects.filter( pk=obj.pk ).count() == 0
+    pytest.raises( InvisibleModel.DoesNotExist, InvisibleModel.objects.get, pk=obj.pk )
 
-    def test_visible_by_pk(self):
-        """Test whether the soft deleted model cannot be found by filtering on pk."""
-        self.assertSoftDelete(self.instance, save=False)
-        self.assertEqual(
-            InvisibleModel.objects.filter(
-                pk=self.instance.pk
-            ).count(),
-            0
-        )
-        self.assertRaises(
-            InvisibleModel.DoesNotExist,
-            InvisibleModel.objects.get,
-            pk=self.instance.pk
-        )
-
-    def test_invisible_by_name(self):
-        """Test whether the soft deleted model cannot be found by filtering on name."""
-        self.assertSoftDelete(self.instance, save=False)
-        self.assertEqual(
-            InvisibleModel.objects.filter(
-                name=self.instance.name
-            ).count(),
-            0
-        )
-        self.assertRaises(
-            InvisibleModel.DoesNotExist,
-            InvisibleModel.objects.get,
-            name=self.instance.name
-        )
+def test_invisible_by_name(instance):
+    """Test whether the soft deleted model cannot be found by filtering on name."""
+    obj = instance
+    assert_soft_delete(obj, save=False)
+    assert InvisibleModel.objects.filter(
+            name=obj.name
+        ).count() == 0
+    pytest.raises(
+        InvisibleModel.DoesNotExist,
+        InvisibleModel.objects.get,
+        name=obj.name
+    )
