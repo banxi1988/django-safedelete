@@ -1,4 +1,4 @@
-from .testcase import SafeDeleteForceTestCase
+from safedelete.tests.asserts import assert_hard_delete
 from ..config import HARD_DELETE
 from ..models import SafeDeleteModel
 
@@ -6,17 +6,19 @@ from ..models import SafeDeleteModel
 class HardDeleteModel(SafeDeleteModel):
     _safedelete_policy = HARD_DELETE
 
+import pytest
+pytestmark = pytest.mark.django_db
 
-class SoftDeleteTestCase(SafeDeleteForceTestCase):
+@pytest.fixture()
+def instance():
+    return HardDeleteModel.objects.create()
 
-    def setUp(self):
-        self.instance = HardDeleteModel.objects.create()
 
-    def test_harddelete(self):
-        """Deleting a model with the soft delete policy should only mask it, not delete it."""
-        self.assertHardDelete(self.instance)
+def test_harddelete(instance):
+    """Deleting a model with the soft delete policy should only mask it, not delete it."""
+    assert_hard_delete(instance)
 
-    def test_update_or_create_no_unique_field(self):
-        HardDeleteModel.objects.update_or_create(id=1)
-        obj, created = HardDeleteModel.objects.update_or_create(id=1)
-        self.assertEqual(obj.id, 1)
+def test_update_or_create_no_unique_field(instance):
+    HardDeleteModel.objects.update_or_create(id=instance.id)
+    obj, created = HardDeleteModel.objects.update_or_create(id=instance.id)
+    assert obj.id == instance.id

@@ -3,15 +3,15 @@ from django.db import models
 from safedelete.tests.asserts import assert_soft_delete
 from ..models import SafeDeleteModel
 
-import pytest
-pytestmark = pytest.mark.django_db
-
 class InvisibleModel(SafeDeleteModel):
     # SafeDeleteModel subclasses automatically have their visibility set to invisible.
 
     name = models.CharField(
         max_length=100
     )
+
+import pytest
+pytestmark = pytest.mark.django_db
 
 @pytest.fixture()
 def instance():
