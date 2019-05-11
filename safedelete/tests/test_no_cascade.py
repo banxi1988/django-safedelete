@@ -1,7 +1,7 @@
 from django.db import models
 from django.db.models.deletion import ProtectedError
 
-from .testcase import SafeDeleteTestCase
+from safedelete.tests.asserts import assert_soft_delete, assert_hard_delete
 from ..config import HARD_DELETE_NOCASCADE
 from ..models import SafeDeleteModel
 
@@ -54,42 +54,44 @@ class SetChild(models.Model):
     )
 
 
-class NoCascadeTestCase(SafeDeleteTestCase):
+import pytest
+pytestmark = pytest.mark.django_db
 
-    def setUp(self):
-        self.instance = NoCascadeModel.objects.create()
+@pytest.fixture()
+def instance():
+    return NoCascadeModel.objects.create( )
 
-    def test_cascade(self):
-        cascade_child = CascadeChild.objects.create(
-            parent=self.instance
-        )
-        self.assertSoftDelete(self.instance)
-        cascade_child.delete()
-        self.assertHardDelete(self.instance)
+def test_cascade(instance):
+    cascade_child = CascadeChild.objects.create(
+        parent=instance
+    )
+    assert_soft_delete(instance)
+    cascade_child.delete()
+    assert_hard_delete(instance)
 
-    def test_protected(self):
-        ProtectedChild.objects.create(
-            parent=self.instance
-        )
-        self.assertRaises(
-            ProtectedError,
-            self.instance.delete
-        )
+def test_protected(instance):
+    ProtectedChild.objects.create(
+        parent=instance
+    )
+    pytest.raises(
+        ProtectedError,
+        instance.delete
+    )
 
-    def test_null(self):
-        NullChild.objects.create(
-            parent=self.instance
-        )
-        self.assertHardDelete(self.instance)
+def test_null(instance):
+    NullChild.objects.create(
+        parent=instance
+    )
+    assert_hard_delete(instance)
 
-    def test_default(self):
-        DefaultChild.objects.create(
-            parent=self.instance
-        )
-        self.assertHardDelete(self.instance)
+def test_default(instance):
+    DefaultChild.objects.create(
+        parent=instance
+    )
+    assert_hard_delete(instance)
 
-    def test_set(self):
-        SetChild.objects.create(
-            parent=self.instance
-        )
-        self.assertHardDelete(self.instance)
+def test_set(instance):
+    SetChild.objects.create(
+        parent=instance
+    )
+    assert_hard_delete(instance)
