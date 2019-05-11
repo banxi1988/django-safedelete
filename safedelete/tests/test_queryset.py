@@ -5,7 +5,6 @@ from django.db import models
 from ..config import DELETED_VISIBLE_BY_FIELD
 from ..managers import SafeDeleteManager
 from ..models import SafeDeleteMixin
-from .testcase import SafeDeleteTestCase
 
 
 class OtherModel(models.Model):
@@ -27,177 +26,134 @@ class QuerySetModel(SafeDeleteMixin):
     objects = FieldManager()
 
 
-class QuerySetTestCase(SafeDeleteTestCase):
+import pytest
+pytestmark = pytest.mark.django_db
 
-    def setUp(self):
-        self.other = OtherModel.objects.create()
-        self.instance = QuerySetModel.objects.create(
-            other=self.other
+@pytest.fixture()
+def other():
+    return OtherModel.objects.create()
+
+@pytest.fixture()
+def instance(other):
+    obj = QuerySetModel.objects.create(other=other)
+    obj.delete()
+    return obj
+
+def test_select_related(instance,django_assert_num_queries):
+    with django_assert_num_queries(1):
+        model = QuerySetModel.objects.select_related(
+            'other',
+        ).get(
+            pk=instance.pk
         )
-        self.instance.delete()
+        str(model.other)
 
-    def test_select_related(self):
-        with self.assertNumQueries(1):
-            model = QuerySetModel.objects.select_related(
-                'other',
-            ).get(
-                pk=self.instance.pk
-            )
-            str(model.other)
 
-    def test_filter_get(self):
-        self.assertRaises(
-            QuerySetModel.DoesNotExist,
-            QuerySetModel.objects.filter(
-                pk=self.instance.pk + 1,
-            ).get,
-            pk=self.instance.pk
-        )
+def test_filter_get(instance):
+    pytest.raises(
+        QuerySetModel.DoesNotExist,
+        QuerySetModel.objects.filter( pk=instance.pk + 1, ).get,
+        pk=instance.pk
+    )
 
-    def test_filter_filter(self):
-        self.assertEqual(
-            QuerySetModel.objects.filter(
-                pk=self.instance.pk + 1,
-            ).filter(
-                pk=self.instance.pk
-            ).count(),
-            0
-        )
 
-    def test_get_field(self):
-        QuerySetModel.objects.get(
-            pk=self.instance.pk
-        )
+def test_filter_filter(instance):
+    assert QuerySetModel.objects.filter(
+            pk=instance.pk + 1,
+        ).filter(
+            pk=instance.pk
+        ).count() == 0
 
-    def test_count(self):
-        self.assertEqual(
-            QuerySetModel.objects.count(),
-            0
-        )
-        self.assertEqual(
-            QuerySetModel.all_objects.count(),
-            1
-        )
 
-    def test_iterator(self):
-        self.assertEqual(
-            len(list(QuerySetModel.objects.iterator())),
-            0
-        )
-        self.assertEqual(
-            len(list(QuerySetModel.all_objects.iterator())),
-            1
-        )
+def test_get_field(instance):
+    QuerySetModel.objects.get(
+        pk=instance.pk
+    )
 
-    def test_exists(self):
-        self.assertFalse(
-            QuerySetModel.objects.filter(
-                other_id=self.other.id
-            ).exists()
-        )
-        self.assertTrue(
-            QuerySetModel.all_objects.filter(
-                other_id=self.other.id
-            ).exists()
-        )
 
-    def test_aggregate(self):
-        self.assertEqual(
-            QuerySetModel.objects.aggregate(
-                max_id=models.Max('id')
-            ),
-            {
-                'max_id': None
-            }
-        )
-        self.assertEqual(
-            QuerySetModel.all_objects.aggregate(
-                max_id=models.Max('id')
-            ),
-            {
-                'max_id': self.instance.id
-            }
-        )
 
-    def test_first(self):
-        self.assertEqual(
-            QuerySetModel.objects.filter(id=self.instance.pk).first(),
-            None)
 
-        self.assertEqual(
-            QuerySetModel.all_objects.filter(id=self.instance.pk).first(),
-            self.instance)
 
-    def test_last(self):
-        self.assertEqual(
-            QuerySetModel.objects.filter(id=self.instance.pk).last(),
-            None)
+def test_count(instance):
+    assert QuerySetModel.objects.count() == 0
+    assert QuerySetModel.all_objects.count() == 1
 
-        self.assertEqual(
-            QuerySetModel.all_objects.filter(id=self.instance.pk).last(),
-            self.instance)
+def test_iterator(instance):
+    assert len(list(QuerySetModel.objects.iterator())) == 0
+    assert len(list(QuerySetModel.all_objects.iterator())) == 1
 
-    def test_latest(self):
-        self.assertRaises(
-            QuerySetModel.DoesNotExist,
-            QuerySetModel.objects.filter(id=self.instance.pk).latest,
-            'creation_date')
+def test_exists(instance):
+    assert QuerySetModel.objects.filter(
+            other_id=instance.other.id
+        ).exists() == False
 
-        self.assertEqual(
-            QuerySetModel.all_objects.filter(id=self.instance.pk).latest('creation_date'),
-            self.instance)
+    assert QuerySetModel.all_objects.filter(
+            other_id=instance.other.id
+        ).exists()
 
-    def test_earliest(self):
-        self.assertRaises(
-            QuerySetModel.DoesNotExist,
-            QuerySetModel.objects.filter(id=self.instance.pk).earliest,
-            'creation_date')
+def test_aggregate(instance):
+    assert QuerySetModel.objects.aggregate(
+            max_id=models.Max('id')
+        ) == { 'max_id': None }
 
-        self.assertEqual(
-            QuerySetModel.all_objects.filter(id=self.instance.pk).earliest('creation_date'),
-            self.instance)
+    assert QuerySetModel.all_objects.aggregate(
+            max_id=models.Max('id')
+        ) == { 'max_id': instance.id }
 
-    def test_all(self):
-        amount = random.randint(1, 4)
+def test_first(instance):
+    assert QuerySetModel.objects.filter(id=instance.pk).first() == None
+    assert QuerySetModel.all_objects.filter(id=instance.pk).first() == instance
 
-        # Create an other object for more testing
-        [QuerySetModel.objects.create(other=self.other).delete()
-         for x in range(amount)]
+def test_last(instance):
+    assert QuerySetModel.objects.filter(id=instance.pk).last() == None
+    assert QuerySetModel.all_objects.filter(id=instance.pk).last() == instance
 
-        self.assertEqual(
-            len(QuerySetModel.objects.all()),
-            0)
 
-        self.assertEqual(
-            len(QuerySetModel.all_objects.all()),
-            amount + 1)  # Count for the already created instance
+def test_latest(instance):
+    pytest.raises(
+        QuerySetModel.DoesNotExist,
+        QuerySetModel.objects.filter(id=instance.pk).latest,
+        'creation_date')
 
-    def test_all_slicing(self):
-        amount = random.randint(1, 4)
+    assert QuerySetModel.all_objects.filter(id=instance.pk).latest('creation_date') == instance
 
-        # Create an other object for more testing
-        [QuerySetModel.objects.create(other=self.other).delete()
-         for x in range(amount)]
 
-        self.assertEqual(
-            len(QuerySetModel.objects.all()[:amount]),
-            0)
+def test_earliest(instance):
+    pytest.raises(
+        QuerySetModel.DoesNotExist,
+        QuerySetModel.objects.filter(id=instance.pk).earliest,
+        'creation_date')
 
-        self.assertEqual(
-            len(QuerySetModel.all_objects.all()[1:amount]),
-            amount - 1)
+    assert QuerySetModel.all_objects.filter(id=instance.pk).earliest('creation_date') == instance
 
-    def test_values_list(self):
-        instance = QuerySetModel.objects.create(
-            other=self.other
-        )
-        self.assertEqual(
-            1,
-            len(QuerySetModel.objects
-                .filter(id=instance.id)
-                .values_list('pk', flat=True))
-        )
-        self.assertEqual(
-            instance.id,
-            QuerySetModel.objects.filter(id=instance.id).values_list('pk', flat=True)[0]
-        )
+
+def test_all(instance, other):
+    amount = random.randint(1, 4)
+
+    # Create an other object for more testing
+    [QuerySetModel.objects.create(other=other).delete()
+     for x in range(amount)]
+
+    assert len(QuerySetModel.objects.all()) == 0
+    assert len(QuerySetModel.all_objects.all()) == amount + 1  # Count for the already created instance
+
+
+def test_all_slicing(other):
+    amount = random.randint(1, 4)
+
+    # Create an other object for more testing
+    [QuerySetModel.objects.create(other=other).delete()
+     for x in range(amount)]
+
+    assert len(QuerySetModel.objects.all()[:amount]) == 0
+    assert len(QuerySetModel.all_objects.all()[1:amount]) == amount - 1
+
+
+def test_values_list(other):
+    instance = QuerySetModel.objects.create(
+        other=other
+    )
+    assert 1 == len(QuerySetModel.objects
+            .filter(id=instance.id)
+            .values_list('pk', flat=True))
+    assert instance.id == QuerySetModel.objects.filter(id=instance.id).values_list('pk', flat=True)[0]
